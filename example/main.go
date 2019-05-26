@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/go-coder/logrus"	
+	"github.com/go-coder/logrus"
 	rus "github.com/sirupsen/logrus"
 )
 
@@ -16,8 +16,8 @@ func (e Err) Error() string {
 func main() {
 	log := logrus.NewLogger("logname", rus.New())
 
-	log.Info("infommmmmmsg", "infokey", "infoval")
-	log.V(2).Info("v2infomsg", "v2infokey", "v2infoval")
-	log.Error(nil, "errmsg", "errkey", "errval")
-	log.Error(&Err{err_msg:"myerr"}, "errmsg", "errkey", "errval")
+	log.Info("infomsg", "infokey", "infoval")
+	log.V(5).Info("v5infomsg", "v5infokey", "v5infoval")
+	log.WithFields("withkey", "withval").Error(nil, "errmsg", "errkey", "errval")
+	log.WithName("myprefix").Error(&Err{err_msg:"myerr"}, "errmsg", "errkey", "errval")
 }

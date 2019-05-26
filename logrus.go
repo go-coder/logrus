@@ -2,13 +2,44 @@ package logrus
 
 import (
 	"fmt"
+	"sort"
+
 	"github.com/go-coder/logr"
 	slog "github.com/sirupsen/logrus"
 )
 
+const (
+	Prefix = "prefix"
+	Time = slog.FieldKeyTime // "time"
+	Level = slog.FieldKeyLevel // "level"
+	Message = slog.FieldKeyMsg //"msg"
+	Error = slog.FieldKeyLogrusError // "logrus_error"
+)
+
+var (
+	Header = []string {
+		Prefix, Time, Level, Message, Error,
+	}
+	formatter = &slog.TextFormatter{
+		DisableSorting: false,
+		SortingFunc: func(keys []string) {
+			sort.Slice(keys, func(i, j int) bool {
+				for _, key:= range Header {
+					if keys[i] == key {
+						return true
+					} else if keys[j] == key {
+						return false
+					} 
+				} // Header 顺序
+				return keys[i] < keys[j]
+			})
+		},
+	}
+)
+
 type ruslog struct {
 	name string
-	logger *slog.Logger
+	entry *slog.Entry
 }
 
 var _ logr.InfoLogger = (*ruslog)(nil)
@@ -19,9 +50,10 @@ func NewLogger(name string, l *slog.Logger)  logr.Logger {
 	if l == nil {
 		panic("non-nil l *logrus.Logger must be provided as 2nd parameter")
 	}
+	l.SetFormatter(formatter)
 	return ruslog {
 		name: name,
-		logger: l,
+		entry: slog.NewEntry(l),
 	}
 }
 
@@ -29,25 +61,22 @@ func NewLogger(name string, l *slog.Logger)  logr.Logger {
 // commandline flags might be used to set the logging verbosity and disable
 // some info logs.
 func (l ruslog) Enabled() bool {
-	return l.logger.IsLevelEnabled(l.logger.GetLevel())
+	return l.entry.Logger.IsLevelEnabled(l.entry.Logger.GetLevel())
 }
 
 // Info logs the given message and key/value pairs, 
 // string keys and arbitrary values are required.
 func (l ruslog) Info(msg string, keysAndValues ...interface{}) {
 	fields := getFields(keysAndValues...)
-	fields["name"] = l.name
-	fields["msg"] = msg
-	l.logger.WithFields(fields).Info(msg)
+	fields[Prefix] = l.name
+	l.entry.WithFields(fields).Info(msg)
 }
 
 // Error logs an error, with the given message and key/value pairs as context.
 func (l ruslog) Error(err error, msg string, keysAndValues ...interface{}) {
 	fields := getFields(keysAndValues...)
-	fields["name"] = l.name
-	fields["msg"] = msg
-	fields["err"] = err
-	l.logger.WithFields(fields).Error(msg)
+	fields[Prefix] = l.name
+	l.entry.WithFields(fields).WithError(err).Error(msg)
 }
 
 // V returns an InfoLogger value for a specific verbosity level.  
@@ -59,16 +88,18 @@ func (l ruslog) V(level int) logr.InfoLogger {
 	}
 	newLogger := ruslog { 
 		name: l.name, 
-		logger: l.logger,
+		entry: l.entry,
 	}
-	newLogger.logger.SetLevel(slog.AllLevels[level])
+	newLogger.entry.Logger.SetLevel(slog.AllLevels[level])
 	return newLogger
 }
 
 // WithFields adds some key-value pairs of context to a logger.
 func (l ruslog) WithFields(keysAndValues ...interface{}) logr.Logger {
-	newLogger := NewLogger(l.name, l.logger)
-	newLogger.WithFields(getFields(keysAndValues...))
+	newLogger := ruslog { 
+		name: l.name, 
+		entry: l.entry.WithFields(getFields(keysAndValues...)), 
+	}
 	return newLogger
 }
 
@@ -76,7 +107,7 @@ func (l ruslog) WithFields(keysAndValues ...interface{}) logr.Logger {
 func (l ruslog) WithName(name string) logr.Logger {
 	newLogger := ruslog { 
 		name: l.name, 
-		logger: l.logger, 
+		entry: l.entry, 
 	}
 	if len(l.name) > 0 {
 		newLogger.name += "." + name
@@ -89,7 +120,7 @@ func (l ruslog) WithName(name string) logr.Logger {
 // getFields returns logrus.Fields (aka. map[string]interface{}) used for structured log
 func getFields(keysAndValues ...interface{}) slog.Fields {
 	if len(keysAndValues) % 2 != 0 {
-		panic("keysAndValues is not valid")
+		panic(fmt.Sprintf("keysAndValues is not valid: %v", keysAndValues))
 	}
 	fields := slog.Fields {}
 	for i := 0; i < len(keysAndValues); i+=2 {
